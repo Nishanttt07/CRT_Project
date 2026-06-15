@@ -17,7 +17,7 @@ export default function LandingPage() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -28,12 +28,37 @@ export default function LandingPage() {
           }
         })
         if (error) throw error
-        setMessage({
-          type: 'success',
-          text: 'Account created successfully. Check your email for verification.'
-        })
+        
+        if (data?.session) {
+          setMessage({
+            type: 'success',
+            text: 'Account created and logged in successfully!'
+          })
+        } else {
+          setMessage({
+            type: 'success',
+            text: 'Account created successfully. Check your email for verification.'
+          })
+        }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        let loginEmail = email
+        // If the identifier doesn't look like an email, assume it's a phone number and look it up
+        if (!email.includes('@')) {
+          const { data: foundEmail, error: rpcError } = await supabase.rpc('get_email_by_phone', {
+            phone_query: email
+          })
+
+          if (rpcError) throw rpcError
+          if (!foundEmail) {
+            throw new Error('No account found associated with this phone number.')
+          }
+          loginEmail = foundEmail
+        }
+
+        const { error } = await supabase.auth.signInWithPassword({ 
+          email: loginEmail, 
+          password 
+        })
         if (error) throw error
         setMessage({
           type: 'success',
@@ -114,18 +139,18 @@ export default function LandingPage() {
 
             <div>
               <label htmlFor="email" className="block text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                Email Address
+                {isSignUp ? 'Email Address' : 'Email Address or Phone Number'}
               </label>
               <div className="mt-1">
                 <input
                   id="email"
                   name="email"
-                  type="email"
-                  autoComplete="email"
+                  type={isSignUp ? 'email' : 'text'}
+                  autoComplete={isSignUp ? 'email' : 'username'}
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
+                  placeholder={isSignUp ? 'name@example.com' : 'name@example.com or phone number'}
                   className="block w-full rounded-lg border border-neutral-200 px-4 py-3 text-neutral-900 placeholder-neutral-400 focus:border-transparent focus:ring-2 focus:ring-neutral-950 focus:outline-none transition-all text-sm"
                 />
               </div>

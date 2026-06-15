@@ -1,0 +1,67 @@
+-- ==========================================
+-- SUGGESTED SUPABASE DATABASE SCHEMA & TRIGGERS
+-- ==========================================
+
+-- 1. Create the public.users table with unique constraints on email and phone
+CREATE TABLE IF NOT EXISTS public.users (
+  id uuid NOT NULL,
+  username text NOT NULL,
+  email text NOT NULL,
+  phone text NOT NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_email_key UNIQUE (email),
+  CONSTRAINT users_phone_key UNIQUE (phone),
+  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users (id) ON DELETE CASCADE
+) TABLESPACE pg_default;
+
+-- 2. Enable Row Level Security (RLS) on public.users
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- 3. Create RLS Policies for authenticated users to manage their own profiles
+CREATE POLICY "Allow users to read their own profile"
+  ON public.users FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Allow users to update their own profile"
+  ON public.users FOR UPDATE
+  USING (auth.uid() = id);
+
+-- 4. Create a secure RPC function to safely retrieve an email by phone number
+-- This runs with SECURITY DEFINER (admin privileges) to bypass RLS check for unauthenticated users during login
+CREATE OR REPLACE FUNCTION public.get_email_by_phone(phone_query text)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  user_email text;
+BEGIN
+  SELECT email INTO user_email
+  FROM public.users
+  WHERE phone = phone_query
+  LIMIT 1;
+  
+  RETURN user_email;
+END;
+$$;
+
+-- 5. Create trigger function to automatically sync user metadata when a user signs up
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.users (id, username, email, phone)
+  VALUES (
+    new.id,
+    COALESCE(new.raw_user_meta_data->>'username', ''),
+    COALESCE(new.email, ''),
+    COALESCE(new.raw_user_meta_data->>'phone', new.phone, '')
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 6. Attach trigger to auth.users table
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
