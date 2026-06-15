@@ -5,6 +5,8 @@ export default function LandingPage() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
 
@@ -15,7 +17,16 @@ export default function LandingPage() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              username,
+              phone
+            }
+          }
+        })
         if (error) throw error
         setMessage({
           type: 'success',
@@ -61,6 +72,46 @@ export default function LandingPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 border border-zinc-200/60 rounded-2xl shadow-sm sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {isSignUp && (
+              <>
+                <div>
+                  <label htmlFor="username" className="block text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                    Username
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="username"
+                      name="username"
+                      type="text"
+                      required
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="johndoe"
+                      className="block w-full rounded-lg border border-neutral-200 px-4 py-3 text-neutral-900 placeholder-neutral-400 focus:border-transparent focus:ring-2 focus:ring-neutral-950 focus:outline-none transition-all text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="phone" className="block text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                    Phone Number
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+1 (555) 000-0000"
+                      className="block w-full rounded-lg border border-neutral-200 px-4 py-3 text-neutral-900 placeholder-neutral-400 focus:border-transparent focus:ring-2 focus:ring-neutral-950 focus:outline-none transition-all text-sm"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
             <div>
               <label htmlFor="email" className="block text-xs font-medium text-neutral-500 uppercase tracking-wider">
                 Email Address
