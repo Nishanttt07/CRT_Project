@@ -81,6 +81,15 @@ export function AuthProvider({ children }) {
   }
 
   const signup = async ({ email, password, username, phone, isTailor, shopName, shopBio, shopAddress, shopLat, shopLng }) => {
+    if (phone) {
+      const { data: foundEmail, error: rpcError } = await supabase.rpc('get_email_by_phone', {
+        phone_query: phone
+      })
+      if (!rpcError && foundEmail) {
+        throw new Error('This phone number is already registered.')
+      }
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

@@ -40,7 +40,20 @@ export default function SignupPage() {
         shopLng
       })
     } catch (err) {
-      setError(err?.message || 'Registration failed. Please try again.')
+      console.error('Signup error:', err)
+      let msg = 'Registration failed. Please try again.'
+      if (err) {
+        if (typeof err === 'string') {
+          msg = err
+        } else if (err.message && typeof err.message === 'string') {
+          msg = err.message
+        } else if (err.error_description && typeof err.error_description === 'string') {
+          msg = err.error_description
+        } else if (err.error && typeof err.error === 'string') {
+          msg = err.error
+        }
+      }
+      setError(msg)
     } finally {
       setSubmitting(false)
     }
