@@ -1,6 +1,29 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../services/supabase'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+function MapUpdater({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, 14);
+    }
+  }, [center, map]);
+  return null;
+}
 
 export default function LandingPage() {
   const [shops, setShops] = useState([])
@@ -21,20 +44,6 @@ export default function LandingPage() {
     }
     fetchShops()
   }, [])
-
-  const getRelativeCoords = (lat, lng) => {
-    if (shops.length === 0) return { left: '50%', top: '50%' }
-    const lats = shops.map(s => s.latitude)
-    const lngs = shops.map(s => s.longitude)
-    let minLat = Math.min(...lats), maxLat = Math.max(...lats)
-    let minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
-    if (maxLat === minLat) { minLat -= 0.01; maxLat += 0.01 }
-    if (maxLng === minLng) { minLng -= 0.01; maxLng += 0.01 }
-    return {
-      left: `${((lng - minLng) / (maxLng - minLng)) * 80 + 10}%`,
-      top: `${((maxLat - lat) / (maxLat - minLat)) * 80 + 10}%`
-    }
-  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col antialiased">
@@ -147,72 +156,41 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 relative w-full h-[420px] bg-zinc-900/50 border border-zinc-800/50 rounded-2xl overflow-hidden backdrop-blur-sm flex items-center justify-center">
-              <div className="absolute inset-0 opacity-5 bg-[linear-gradient(to_right,#8b5cf6_1px,transparent_1px),linear-gradient(to_bottom,#8b5cf6_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-              <div className="absolute top-1/4 left-1/3 w-40 h-40 bg-violet-600/10 rounded-full filter blur-3xl"></div>
-              <div className="absolute bottom-1/4 right-1/4 w-48 h-32 bg-fuchsia-600/10 rounded-full filter blur-3xl"></div>
-
-              {shops.map((shop) => {
-                const coords = getRelativeCoords(shop.latitude, shop.longitude)
-                return (
-                  <button
-                    key={shop.id}
-                    onClick={() => setSelectedShop(shop)}
-                    style={coords}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 group focus:outline-none transition-transform hover:scale-110"
+            <div className="lg:col-span-2 relative w-full h-[420px] bg-zinc-900/50 border border-zinc-800/50 rounded-2xl overflow-hidden backdrop-blur-sm flex items-center justify-center z-0">
+              <MapContainer 
+                center={selectedShop ? [selectedShop.latitude || 51.5113, selectedShop.longitude || -0.1402] : (shops.length > 0 ? [shops[0].latitude || 51.5113, shops[0].longitude || -0.1402] : [51.5113, -0.1402])} 
+                zoom={12} 
+                style={{ height: '100%', width: '100%' }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                />
+                <MapUpdater center={selectedShop ? [selectedShop.latitude || 51.5113, selectedShop.longitude || -0.1402] : null} />
+                
+                {shops.map(shop => (
+                  <Marker 
+                    key={shop.id} 
+                    position={[shop.latitude || 51.5113, shop.longitude || -0.1402]}
+                    eventHandlers={{
+                      click: () => setSelectedShop(shop),
+                    }}
                   >
-                    <div className="flex flex-col items-center">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 border-2 border-zinc-900 shadow-lg shadow-violet-500/30 flex items-center justify-center text-white text-xs group-hover:shadow-xl transition-all">
-                        📍
-                      </div>
-                      <div className="mt-1.5 bg-zinc-900/90 backdrop-blur-sm px-2.5 py-1 rounded-lg text-[10px] font-medium border border-zinc-700/50 shadow-sm text-zinc-300 max-w-[130px] flex flex-col items-center">
-                        <span className="truncate w-full text-center">{shop.shop_name}</span>
+                    <Popup>
+                      <div className="font-sans">
+                        <h4 className="font-semibold text-zinc-900 m-0">{shop.shop_name}</h4>
                         {shopRatings[shop.id] && (
-                          <span className="text-amber-500 font-bold text-[9px]">{shopRatings[shop.id].average_rating}★</span>
+                          <span className="text-amber-500 font-bold text-[10px] m-0">{shopRatings[shop.id].average_rating}★</span>
                         )}
+                        <p className="text-[10px] text-zinc-500 mt-1 mb-0">{shop.address}</p>
+                        <div className="mt-2 pt-2 border-t border-zinc-200">
+                          <Link to="/login" className="text-[10px] font-medium text-violet-600 hover:text-violet-700">Login to order →</Link>
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                )
-              })}
-
-              {shops.length === 0 && (
-                <div className="absolute text-center p-4">
-                  <p className="text-zinc-600 text-xs">No shops registered on the map yet.</p>
-                </div>
-              )}
-
-              {selectedShop && (
-                <div className="absolute bottom-4 left-4 right-4 bg-zinc-900/95 backdrop-blur-xl p-5 border border-zinc-700/50 rounded-xl shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 max-w-lg mx-auto animate-slide-up">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-semibold text-white">{selectedShop.shop_name}</h4>
-                      {shopRatings[selectedShop.id] && (
-                        <span className="bg-amber-500/20 text-amber-400 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                          {shopRatings[selectedShop.id].average_rating}★
-                          <span className="font-normal opacity-70">({shopRatings[selectedShop.id].total_reviews})</span>
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">{selectedShop.bio}</p>
-                    <p className="text-[10px] text-zinc-500 mt-1">📍 {selectedShop.address}</p>
-                  </div>
-                  <div className="flex gap-2 w-full md:w-auto justify-end">
-                    <button
-                      onClick={() => setSelectedShop(null)}
-                      className="px-3.5 py-2 text-[10px] border border-zinc-700 hover:bg-zinc-800 rounded-lg font-medium text-zinc-400 transition-colors"
-                    >
-                      Close
-                    </button>
-                    <Link
-                      to="/login"
-                      className="px-3.5 py-2 text-[10px] bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-violet-600/25 text-center"
-                    >
-                      Log in to order
-                    </Link>
-                  </div>
-                </div>
-              )}
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
             </div>
 
             {/* Shop list */}

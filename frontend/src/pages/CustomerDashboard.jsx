@@ -1,7 +1,30 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+function MapUpdater({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, 14);
+    }
+  }, [center, map]);
+  return null;
+}
 
 export default function CustomerDashboard() {
   const { user, logout } = useAuth()
@@ -11,20 +34,11 @@ export default function CustomerDashboard() {
   const [shopRatings, setShopRatings] = useState({})
   const [activeTab, setActiveTab] = useState('orders')
   const [selectedShop, setSelectedShop] = useState(null)
-  const [showBookingModal, setShowBookingModal] = useState(false)
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(false)
 
   // Rating state
   const [reviewData, setReviewData] = useState({ rating: 0, text: '' })
-
-  // Booking form
-  const [bookingGarment, setBookingGarment] = useState('Suit')
-  const [bookingPrice, setBookingPrice] = useState('500')
-  const [bookingDelivery, setBookingDelivery] = useState('')
-  const [bookingChest, setBookingChest] = useState('40')
-  const [bookingWaist, setBookingWaist] = useState('34')
-  const [bookingSleeve, setBookingSleeve] = useState('25')
 
   const showToast = (msg) => {
     setToast(msg)
@@ -72,58 +86,6 @@ export default function CustomerDashboard() {
       showToast(err.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleBookOrder = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    try {
-      const { error: orderError } = await supabase.from('orders').insert({
-        customer_id: user.id,
-        tailor_id: selectedShop.id,
-        garment_type: bookingGarment,
-        status: 'pending_measurements',
-        total_price: parseFloat(bookingPrice),
-        expected_delivery: bookingDelivery
-      })
-      if (orderError) throw orderError
-
-      const { error: measError } = await supabase.from('measurements').insert({
-        customer_id: user.id,
-        tailor_id: selectedShop.id,
-        garment_type: bookingGarment,
-        metrics: {
-          chest: parseFloat(bookingChest),
-          waist: parseFloat(bookingWaist),
-          sleeve: parseFloat(bookingSleeve)
-        }
-      })
-      if (measError) throw measError
-
-      showToast('Order placed successfully!')
-      setShowBookingModal(false)
-      setSelectedShop(null)
-      setActiveTab('orders')
-      fetchCustomerData()
-    } catch (err) {
-      showToast(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const getRelativeCoords = (lat, lng) => {
-    if (shops.length === 0) return { left: '50%', top: '50%' }
-    const lats = shops.map(s => s.latitude)
-    const lngs = shops.map(s => s.longitude)
-    let minLat = Math.min(...lats), maxLat = Math.max(...lats)
-    let minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
-    if (maxLat === minLat) { minLat -= 0.01; maxLat += 0.01 }
-    if (maxLng === minLng) { minLng -= 0.01; maxLng += 0.01 }
-    return {
-      left: `${((lng - minLng) / (maxLng - minLng)) * 80 + 10}%`,
-      top: `${((maxLat - lat) / (maxLat - minLat)) * 80 + 10}%`
     }
   }
 
@@ -221,12 +183,6 @@ export default function CustomerDashboard() {
           <div className="space-y-5 animate-fade-in">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold text-zinc-900 tracking-tight">Your Orders</h2>
-              <button
-                onClick={() => setActiveTab('browse')}
-                className="px-4 py-2 text-xs font-medium text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 rounded-lg shadow-sm transition-all"
-              >
-                + New Order
-              </button>
             </div>
 
             {orders.length === 0 ? (
@@ -341,121 +297,38 @@ export default function CustomerDashboard() {
             <h2 className="text-lg font-semibold text-zinc-900 tracking-tight">Find Tailors</h2>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 relative w-full h-[450px] bg-white border border-zinc-200/60 rounded-2xl overflow-hidden shadow-sm">
-                <div className="absolute inset-0 opacity-5 bg-[linear-gradient(to_right,#8b5cf6_1px,transparent_1px),linear-gradient(to_bottom,#8b5cf6_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-                <div className="absolute top-1/4 left-1/3 w-40 h-40 bg-violet-200/30 rounded-full filter blur-3xl"></div>
-                <div className="absolute bottom-1/4 right-1/4 w-48 h-32 bg-fuchsia-200/30 rounded-full filter blur-3xl"></div>
-
-                {shops.map((shop) => {
-                  const coords = getRelativeCoords(shop.latitude, shop.longitude)
-                  return (
-                    <button
-                      key={shop.id}
-                      onClick={() => { setSelectedShop(shop); setShowBookingModal(false) }}
-                      style={coords}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 group focus:outline-none transition-transform hover:scale-110"
+              <div className="lg:col-span-2 relative w-full h-[450px] bg-white border border-zinc-200/60 rounded-2xl overflow-hidden shadow-sm z-0">
+                <MapContainer 
+                  center={selectedShop ? [selectedShop.latitude || 51.5113, selectedShop.longitude || -0.1402] : (shops.length > 0 ? [shops[0].latitude || 51.5113, shops[0].longitude || -0.1402] : [51.5113, -0.1402])} 
+                  zoom={12} 
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  />
+                  <MapUpdater center={selectedShop ? [selectedShop.latitude || 51.5113, selectedShop.longitude || -0.1402] : null} />
+                  
+                  {shops.map(shop => (
+                    <Marker 
+                      key={shop.id} 
+                      position={[shop.latitude || 51.5113, shop.longitude || -0.1402]}
+                      eventHandlers={{
+                        click: () => setSelectedShop(shop),
+                      }}
                     >
-                      <div className="flex flex-col items-center">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 border-2 border-white shadow-lg flex items-center justify-center text-white text-xs group-hover:shadow-xl transition-all">
-                          📍
-                        </div>
-                        <div className="mt-1.5 bg-white px-2.5 py-1 rounded-lg text-[10px] font-medium border border-zinc-200/80 shadow-sm text-zinc-800 max-w-[130px] flex flex-col items-center">
-                          <span className="truncate w-full text-center">{shop.shop_name}</span>
+                      <Popup>
+                        <div className="font-sans">
+                          <h4 className="font-semibold text-zinc-900 m-0">{shop.shop_name}</h4>
                           {shopRatings[shop.id] && (
-                            <span className="text-amber-500 font-bold text-[9px]">{shopRatings[shop.id].average_rating}★</span>
+                            <span className="text-amber-500 font-bold text-[10px] m-0">{shopRatings[shop.id].average_rating}★</span>
                           )}
+                          <p className="text-[10px] text-zinc-500 mt-1 mb-0">{shop.address}</p>
                         </div>
-                      </div>
-                    </button>
-                  )
-                })}
-
-                {shops.length === 0 && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <p className="text-zinc-400 text-xs">No shops registered yet.</p>
-                  </div>
-                )}
-
-                {/* Shop info popup */}
-                {selectedShop && !showBookingModal && (
-                  <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-sm p-5 border border-zinc-200 rounded-xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 max-w-lg mx-auto animate-slide-up">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-semibold text-zinc-900">{selectedShop.shop_name}</h4>
-                        {shopRatings[selectedShop.id] && (
-                          <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                            {shopRatings[selectedShop.id].average_rating}★
-                            <span className="font-normal opacity-70">({shopRatings[selectedShop.id].total_reviews})</span>
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{selectedShop.bio}</p>
-                      <p className="text-[10px] text-zinc-400 mt-1">📍 {selectedShop.address}</p>
-                    </div>
-                    <div className="flex gap-2 w-full md:w-auto justify-end">
-                      <button onClick={() => setSelectedShop(null)} className="px-3.5 py-2 text-[10px] border border-zinc-200 hover:bg-zinc-50 rounded-lg font-medium text-zinc-600 transition-colors">
-                        Close
-                      </button>
-                      <button onClick={() => setShowBookingModal(true)} className="px-3.5 py-2 text-[10px] bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-violet-600/25">
-                        Place Order
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Booking modal */}
-                {showBookingModal && selectedShop && (
-                  <div className="absolute inset-0 bg-white/95 backdrop-blur-sm p-6 overflow-y-auto flex flex-col justify-center max-w-md mx-auto my-4 border border-zinc-200 rounded-2xl shadow-2xl space-y-4 animate-fade-in">
-                    <div>
-                      <h4 className="text-sm font-semibold text-zinc-900">New Order — {selectedShop.shop_name}</h4>
-                      <p className="text-[11px] text-zinc-500">Provide garment details and measurements</p>
-                    </div>
-                    <form onSubmit={handleBookOrder} className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Garment Type</label>
-                          <select value={bookingGarment} onChange={e => setBookingGarment(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-xs text-zinc-900 focus:outline-none focus:border-violet-500 bg-white">
-                            <option value="Suit">Suit</option>
-                            <option value="Shirt">Shirt</option>
-                            <option value="Trousers">Trousers</option>
-                            <option value="Dress">Dress</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Price (₹)</label>
-                          <input type="number" required value={bookingPrice} onChange={e => setBookingPrice(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-xs text-zinc-900 focus:outline-none focus:border-violet-500" />
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Delivery Date</label>
-                        <input type="date" required value={bookingDelivery} onChange={e => setBookingDelivery(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-xs text-zinc-900 focus:outline-none focus:border-violet-500 bg-white" />
-                      </div>
-                      <div className="pt-2 border-t border-zinc-100 space-y-2">
-                        <h5 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Measurements (Inches)</h5>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="space-y-1">
-                            <label className="block text-[9px] text-zinc-500">Chest</label>
-                            <input type="number" required value={bookingChest} onChange={e => setBookingChest(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-xs focus:outline-none focus:border-violet-500" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="block text-[9px] text-zinc-500">Waist</label>
-                            <input type="number" required value={bookingWaist} onChange={e => setBookingWaist(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-xs focus:outline-none focus:border-violet-500" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="block text-[9px] text-zinc-500">Sleeve</label>
-                            <input type="number" required value={bookingSleeve} onChange={e => setBookingSleeve(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-xs focus:outline-none focus:border-violet-500" />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 justify-end pt-3">
-                        <button type="button" onClick={() => setShowBookingModal(false)} className="px-4 py-2 text-xs border border-zinc-200 rounded-lg text-zinc-500 hover:bg-zinc-50">Cancel</button>
-                        <button type="submit" disabled={loading} className="px-4 py-2 text-xs bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-lg font-medium disabled:opacity-50">
-                          {loading ? 'Placing...' : 'Confirm Order'}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                )}
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
               </div>
 
               {/* Shop list sidebar */}
@@ -468,7 +341,7 @@ export default function CustomerDashboard() {
                   {shops.map(shop => (
                     <div
                       key={shop.id}
-                      onClick={() => { setSelectedShop(shop); setShowBookingModal(false) }}
+                      onClick={() => setSelectedShop(shop)}
                       className={`p-4 border rounded-xl cursor-pointer transition-all duration-200 hover:shadow-md ${
                         selectedShop?.id === shop.id
                           ? 'border-violet-300 bg-violet-50/50 shadow-sm'

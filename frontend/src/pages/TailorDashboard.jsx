@@ -11,6 +11,18 @@ export default function TailorDashboard() {
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null) // For invoices
+  const [showOrderModal, setShowOrderModal] = useState(false)
+  const [newOrder, setNewOrder] = useState({
+    guestName: '',
+    guestPhone: '',
+    garmentType: 'Suit',
+    price: '500',
+    advance: '0',
+    delivery: '',
+    chest: '40',
+    waist: '34',
+    sleeve: '25'
+  })
   const [newItem, setNewItem] = useState({ name: '', quantity: 0, unit: 'meters' })
   const [shopSettings, setShopSettings] = useState({
     name: '', bio: '', lat: '51.5113', lng: '-0.1402', address: ''
@@ -57,8 +69,8 @@ export default function TailorDashboard() {
       if (usersData) usersData.forEach(u => { userMap[u.id] = { name: u.username, phone: u.phone } })
       setOrders(ordersData.map(o => ({ 
         ...o, 
-        customerName: userMap[o.customer_id]?.name || 'Client',
-        customerPhone: userMap[o.customer_id]?.phone || ''
+        customerName: o.guest_name || userMap[o.customer_id]?.name || 'Walk-in Client',
+        customerPhone: o.guest_phone || userMap[o.customer_id]?.phone || ''
       })))
     }
 
@@ -71,6 +83,57 @@ export default function TailorDashboard() {
   useEffect(() => {
     if (user.id) fetchTailorData()
   }, [user.id])
+
+  const handleCreateOrder = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      let customerId = null;
+      if (newOrder.guestPhone) {
+        const { data: existingUser } = await supabase.from('users').select('id').eq('phone', newOrder.guestPhone).maybeSingle()
+        if (existingUser) {
+          customerId = existingUser.id;
+        }
+      }
+
+      const { data: orderData, error: orderError } = await supabase.from('orders').insert({
+        customer_id: customerId,
+        tailor_id: user.id,
+        guest_name: customerId ? null : newOrder.guestName,
+        guest_phone: customerId ? null : newOrder.guestPhone,
+        garment_type: newOrder.garmentType,
+        status: 'pending_measurements',
+        total_price: parseFloat(newOrder.price),
+        amount_paid: parseFloat(newOrder.advance),
+        expected_delivery: newOrder.delivery || null
+      }).select().single()
+      
+      if (orderError) throw orderError
+
+      const { error: measError } = await supabase.from('measurements').insert({
+        customer_id: customerId,
+        tailor_id: user.id,
+        guest_name: customerId ? null : newOrder.guestName,
+        guest_phone: customerId ? null : newOrder.guestPhone,
+        garment_type: newOrder.garmentType,
+        metrics: {
+          chest: parseFloat(newOrder.chest),
+          waist: parseFloat(newOrder.waist),
+          sleeve: parseFloat(newOrder.sleeve)
+        }
+      })
+      if (measError) throw measError
+
+      showToast('Order created successfully!')
+      setShowOrderModal(false)
+      fetchTailorData()
+      setNewOrder({ guestName: '', guestPhone: '', garmentType: 'Suit', price: '500', advance: '0', delivery: '', chest: '40', waist: '34', sleeve: '25' })
+    } catch (err) {
+      showToast(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
@@ -300,6 +363,12 @@ export default function TailorDashboard() {
                   <h3 className="text-sm font-semibold text-white">Orders Management</h3>
                   <p className="text-[10px] text-zinc-500 mt-0.5">{orders.length} total commissions</p>
                 </div>
+                <button
+                  onClick={() => setShowOrderModal(true)}
+                  className="px-4 py-2 text-xs font-medium text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg shadow-sm transition-all shadow-emerald-500/20"
+                >
+                  + New Order
+                </button>
               </div>
               <div className="p-6 space-y-4">
                 {pendingOrders.map(order => {
@@ -629,6 +698,112 @@ export default function TailorDashboard() {
                 window.location.reload(); // Quick hack to restore react state after replacing DOM
               }} className="bg-teal-600 hover:bg-teal-500 text-white px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-teal-500/20">
                 🖨️ Print Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Order Vault Modal */}
+      {showOrderModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="text-white font-semibold flex items-center gap-2"><span>✂️</span> New Order & Measurement Vault</h3>
+                <p className="text-[10px] text-zinc-400 mt-1">Record a new walk-in or registered customer order.</p>
+              </div>
+              <button onClick={() => setShowOrderModal(false)} className="text-zinc-500 hover:text-white">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              <form id="new-order-form" onSubmit={handleCreateOrder} className="space-y-6">
+                
+                {/* Customer Details */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider border-b border-zinc-800 pb-2">Customer Details</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Customer Name</label>
+                      <input type="text" required value={newOrder.guestName} onChange={e => setNewOrder({...newOrder, guestName: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="John Doe" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Phone Number</label>
+                      <input type="text" required value={newOrder.guestPhone} onChange={e => setNewOrder({...newOrder, guestPhone: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="+91 9876543210" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Order Details */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider border-b border-zinc-800 pb-2">Order Details</h4>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-1.5 lg:col-span-2">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Garment Type</label>
+                      <select value={newOrder.garmentType} onChange={e => setNewOrder({...newOrder, garmentType: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                        <option value="Suit">Suit</option>
+                        <option value="Shirt">Shirt</option>
+                        <option value="Trousers">Trousers</option>
+                        <option value="Dress">Dress</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5 lg:col-span-2">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Delivery Date</label>
+                      <input type="date" required value={newOrder.delivery} onChange={e => setNewOrder({...newOrder, delivery: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 [color-scheme:dark]" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Measurements Vault */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider border-b border-zinc-800 pb-2 flex items-center gap-2">
+                    Measurements <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded">Inches</span>
+                  </h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Chest</label>
+                      <input type="number" step="0.5" required value={newOrder.chest} onChange={e => setNewOrder({...newOrder, chest: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Waist</label>
+                      <input type="number" step="0.5" required value={newOrder.waist} onChange={e => setNewOrder({...newOrder, waist: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Sleeve</label>
+                      <input type="number" step="0.5" required value={newOrder.sleeve} onChange={e => setNewOrder({...newOrder, sleeve: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Billing */}
+                <div className="space-y-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
+                  <h4 className="text-xs font-bold text-teal-400 uppercase tracking-wider border-b border-zinc-800 pb-2">Billing Details</h4>
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Total Price (₹)</label>
+                      <input type="number" required value={newOrder.price} onChange={e => setNewOrder({...newOrder, price: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 font-mono" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Advance Paid (₹)</label>
+                      <input type="number" required value={newOrder.advance} onChange={e => setNewOrder({...newOrder, advance: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 font-mono" />
+                    </div>
+                    <div className="space-y-1.5 flex flex-col justify-end">
+                      <div className="bg-zinc-900/50 rounded-lg p-2.5 border border-zinc-800 flex justify-between items-center">
+                        <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Balance</span>
+                        <span className="font-mono text-rose-400 font-bold text-sm">
+                          ₹{Math.max(0, parseFloat(newOrder.price || 0) - parseFloat(newOrder.advance || 0)).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div className="p-4 bg-zinc-950 flex justify-end gap-3 shrink-0 border-t border-zinc-800">
+              <button onClick={() => setShowOrderModal(false)} className="px-5 py-2.5 text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                Cancel
+              </button>
+              <button type="submit" form="new-order-form" disabled={loading} className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-6 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+                {loading ? 'Creating...' : 'Create Order & Vault Measurements'}
               </button>
             </div>
           </div>

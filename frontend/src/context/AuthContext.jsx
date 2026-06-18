@@ -134,7 +134,9 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     await supabase.auth.signOut()
     setUser({ isLoggedIn: false, role: null, id: null, email: null, username: null })
-    navigate('/')
+    localStorage.clear()
+    sessionStorage.clear()
+    window.location.href = '/'
   }
 
   return (
