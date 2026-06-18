@@ -4,12 +4,20 @@ import { supabase } from '../services/supabase'
 
 export default function LandingPage() {
   const [shops, setShops] = useState([])
+  const [shopRatings, setShopRatings] = useState({})
   const [selectedShop, setSelectedShop] = useState(null)
 
   useEffect(() => {
     const fetchShops = async () => {
       const { data } = await supabase.from('shops').select('*')
       if (data) setShops(data)
+      
+      const { data: ratingsData } = await supabase.from('shop_ratings').select('*')
+      if (ratingsData) {
+        const ratingsMap = {}
+        ratingsData.forEach(r => { ratingsMap[r.shop_id] = r })
+        setShopRatings(ratingsMap)
+      }
     }
     fetchShops()
   }, [])
@@ -157,9 +165,12 @@ export default function LandingPage() {
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 border-2 border-zinc-900 shadow-lg shadow-violet-500/30 flex items-center justify-center text-white text-xs group-hover:shadow-xl transition-all">
                         📍
                       </div>
-                      <span className="mt-1.5 bg-zinc-900/90 backdrop-blur-sm px-2.5 py-1 rounded-lg text-[10px] font-medium border border-zinc-700/50 shadow-sm text-zinc-300 max-w-[130px] truncate">
-                        {shop.shop_name}
-                      </span>
+                      <div className="mt-1.5 bg-zinc-900/90 backdrop-blur-sm px-2.5 py-1 rounded-lg text-[10px] font-medium border border-zinc-700/50 shadow-sm text-zinc-300 max-w-[130px] flex flex-col items-center">
+                        <span className="truncate w-full text-center">{shop.shop_name}</span>
+                        {shopRatings[shop.id] && (
+                          <span className="text-amber-500 font-bold text-[9px]">{shopRatings[shop.id].average_rating}★</span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 )
@@ -174,7 +185,15 @@ export default function LandingPage() {
               {selectedShop && (
                 <div className="absolute bottom-4 left-4 right-4 bg-zinc-900/95 backdrop-blur-xl p-5 border border-zinc-700/50 rounded-xl shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 max-w-lg mx-auto animate-slide-up">
                   <div>
-                    <h4 className="text-xs font-semibold text-white">{selectedShop.shop_name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-semibold text-white">{selectedShop.shop_name}</h4>
+                      {shopRatings[selectedShop.id] && (
+                        <span className="bg-amber-500/20 text-amber-400 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                          {shopRatings[selectedShop.id].average_rating}★
+                          <span className="font-normal opacity-70">({shopRatings[selectedShop.id].total_reviews})</span>
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">{selectedShop.bio}</p>
                     <p className="text-[10px] text-zinc-500 mt-1">📍 {selectedShop.address}</p>
                   </div>
@@ -214,7 +233,14 @@ export default function LandingPage() {
                     }`}
                   >
                     <div className="flex justify-between items-start">
-                      <h4 className="text-xs font-semibold text-white">{shop.shop_name}</h4>
+                      <div>
+                        <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
+                          {shop.shop_name}
+                          {shopRatings[shop.id] && (
+                            <span className="text-amber-500 text-[10px]">{shopRatings[shop.id].average_rating}★</span>
+                          )}
+                        </h4>
+                      </div>
                       <span className="text-[9px] text-zinc-600 font-mono">
                         {shop.latitude?.toFixed(3)}, {shop.longitude?.toFixed(3)}
                       </span>
