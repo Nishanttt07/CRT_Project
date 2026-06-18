@@ -7,5 +7,8 @@ export default defineConfig({
     react(),
     tailwindcss()
   ],
-  envPrefix: ['VITE_', 'NEXT_PUBLIC_']
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  build: {
+    chunkSizeWarningLimit: 1600, // Supresses the 500kB warning
+  }
 })
