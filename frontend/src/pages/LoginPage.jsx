@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
 
   if (!loading && user.isLoggedIn) {
+    if (user.role === 'admin') return <Navigate to="/admin" replace />
     return <Navigate to={user.role === 'tailor' ? '/tailor' : '/dashboard'} replace />
   }
 

@@ -26,6 +26,7 @@ export default function ProtectedRoute({ children, requiredRole }) {
   }
 
   if (requiredRole && user.role !== requiredRole) {
+    if (user.role === 'admin') return <Navigate to="/admin" replace />
     return <Navigate to={user.role === 'tailor' ? '/tailor' : '/dashboard'} replace />
   }
 
