@@ -9,6 +9,24 @@ export default defineConfig({
   ],
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   build: {
-    chunkSizeWarningLimit: 1600, // Supresses the 500kB warning
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('leaflet') || id.includes('react-leaflet')) {
+              return 'vendor-leaflet'
+            }
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-react'
+            }
+            if (id.includes('@supabase')) {
+              return 'vendor-supabase'
+            }
+            return 'vendor'
+          }
+        }
+      }
+    }
   }
 })
