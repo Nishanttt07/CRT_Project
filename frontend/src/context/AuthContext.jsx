@@ -10,6 +10,16 @@ export function AuthProvider({ children }) {
   const navigate = useNavigate()
 
   const determineRole = async (authUser) => {
+    if (authUser.email === 'admin@gmail.com') {
+      return {
+        isLoggedIn: true,
+        role: 'admin',
+        id: authUser.id,
+        email: authUser.email,
+        username: 'Admin'
+      }
+    }
+
     const { data: shop } = await supabase
       .from('shops')
       .select('id')
@@ -76,7 +86,7 @@ export function AuthProvider({ children }) {
 
     const userData = await determineRole(data.user)
     setUser(userData)
-    navigate(userData.role === 'tailor' ? '/tailor' : '/dashboard')
+    navigate(userData.role === 'admin' ? '/admin' : (userData.role === 'tailor' ? '/tailor' : '/dashboard'))
     return userData
   }
 

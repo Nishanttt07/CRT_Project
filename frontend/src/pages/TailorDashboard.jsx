@@ -25,7 +25,7 @@ export default function TailorDashboard() {
   })
   const [newItem, setNewItem] = useState({ name: '', quantity: 0, unit: 'meters' })
   const [shopSettings, setShopSettings] = useState({
-    name: '', bio: '', lat: '51.5113', lng: '-0.1402', address: ''
+    name: '', bio: '', lat: '51.5113', lng: '-0.1402', address: '', status: 'verified', valid_until: null
   })
 
   const showToast = (msg) => {
@@ -58,7 +58,9 @@ export default function TailorDashboard() {
         bio: shop.bio || '',
         lat: String(shop.latitude || '51.5113'),
         lng: String(shop.longitude || '-0.1402'),
-        address: shop.address || ''
+        address: shop.address || '',
+        status: shop.status || 'pending',
+        valid_until: shop.valid_until || null
       })
     }
 
@@ -224,8 +226,50 @@ export default function TailorDashboard() {
     { id: 'settings', icon: '⚙️', label: 'Shop Settings' },
   ]
 
+  if (shopSettings.status === 'pending') {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-6 border border-amber-500/20">
+          <span className="text-3xl text-amber-500">⏳</span>
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">Profile Under Review</h1>
+        <p className="text-zinc-400 max-w-md mb-8">
+          Your shop registration has been submitted and is currently waiting for admin verification. 
+          You will gain access to the Tailor Dashboard once approved.
+        </p>
+        <button onClick={logout} className="text-sm text-zinc-500 hover:text-white transition-colors border border-zinc-800 rounded-xl px-6 py-2.5">
+          Sign Out
+        </button>
+      </div>
+    )
+  }
+
+  if (shopSettings.status === 'rejected') {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-rose-500/10 rounded-2xl flex items-center justify-center mb-6 border border-rose-500/20">
+          <span className="text-3xl text-rose-500">❌</span>
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">Application Rejected</h1>
+        <p className="text-zinc-400 max-w-md mb-8">
+          Unfortunately, your shop application did not meet our guidelines and has been rejected by the administration.
+        </p>
+        <button onClick={logout} className="text-sm text-zinc-500 hover:text-white transition-colors border border-zinc-800 rounded-xl px-6 py-2.5">
+          Sign Out
+        </button>
+      </div>
+    )
+  }
+
+  const isExpired = shopSettings.valid_until && new Date(shopSettings.valid_until) < new Date()
+
   return (
     <div className="min-h-screen bg-zinc-950 flex">
+      {isExpired && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-rose-600 text-white text-center py-2 text-sm font-semibold">
+          Your subscription has expired! Please contact the admin to renew.
+        </div>
+      )}
       {/* Toast */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-zinc-800 text-white text-xs font-medium px-5 py-3.5 rounded-xl border border-zinc-700 shadow-2xl shadow-black/30 animate-slide-up flex items-center gap-2">

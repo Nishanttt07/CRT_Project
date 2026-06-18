@@ -32,7 +32,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     const fetchShops = async () => {
-      const { data } = await supabase.from('shops').select('*')
+      const { data } = await supabase.from('shops').select('*').eq('status', 'verified').order('is_promoted', { ascending: false })
       if (data) setShops(data)
       
       const { data: ratingsData } = await supabase.from('shop_ratings').select('*')
@@ -178,9 +178,15 @@ export default function LandingPage() {
                   >
                     <Popup>
                       <div className="font-sans">
-                        <h4 className="font-semibold text-zinc-900 m-0">{shop.shop_name}</h4>
+                        <h4 className="font-semibold text-zinc-900 m-0">
+                          {shop.shop_name}
+                          {shop.is_promoted && <span className="ml-1 text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded border border-amber-200">Ad</span>}
+                        </h4>
                         {shopRatings[shop.id] && (
-                          <span className="text-amber-500 font-bold text-[10px] m-0">{shopRatings[shop.id].average_rating}★</span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-amber-500 font-bold text-[10px] m-0">{shopRatings[shop.id].average_rating}★</span>
+                            <span className="text-zinc-400 text-[9px]">({shopRatings[shop.id].total_reviews})</span>
+                          </div>
                         )}
                         <p className="text-[10px] text-zinc-500 mt-1 mb-0">{shop.address}</p>
                         <div className="mt-2 pt-2 border-t border-zinc-200">
@@ -212,10 +218,11 @@ export default function LandingPage() {
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
+                        <h4 className="text-xs font-semibold text-white flex items-center gap-1.5 flex-wrap">
                           {shop.shop_name}
+                          {shop.is_promoted && <span className="bg-amber-500/20 text-amber-500 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Ad</span>}
                           {shopRatings[shop.id] && (
-                            <span className="text-amber-500 text-[10px]">{shopRatings[shop.id].average_rating}★</span>
+                            <span className="text-amber-500 text-[10px] bg-amber-500/10 px-1.5 py-0.5 rounded-full">{shopRatings[shop.id].average_rating} ★</span>
                           )}
                         </h4>
                       </div>

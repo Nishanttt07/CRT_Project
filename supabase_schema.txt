@@ -85,6 +85,10 @@ CREATE TABLE IF NOT EXISTS public.shops (
     latitude FLOAT,
     longitude FLOAT,
     address TEXT,
+    status TEXT DEFAULT 'pending',
+    subscription_plan TEXT DEFAULT 'free',
+    valid_until TIMESTAMPTZ,
+    is_promoted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
