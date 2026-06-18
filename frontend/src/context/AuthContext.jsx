@@ -43,6 +43,18 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const getSession = async () => {
+      if (localStorage.getItem('admin_bypass') === 'true') {
+        setUser({
+          isLoggedIn: true,
+          role: 'admin',
+          id: 'admin-id',
+          email: 'admin@gmail.com',
+          username: 'Admin'
+        })
+        setLoading(false)
+        return
+      }
+
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         const userData = await determineRole(session.user)
@@ -75,6 +87,7 @@ export function AuthProvider({ children }) {
         email: 'admin@gmail.com',
         username: 'Admin'
       }
+      localStorage.setItem('admin_bypass', 'true')
       setUser(adminData)
       navigate('/admin')
       return adminData
@@ -156,6 +169,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = async () => {
+    localStorage.removeItem('admin_bypass')
     await supabase.auth.signOut()
     setUser({ isLoggedIn: false, role: null, id: null, email: null, username: null })
     localStorage.clear()
