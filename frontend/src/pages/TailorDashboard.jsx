@@ -6,9 +6,12 @@ import { supabase } from '../services/supabase'
 export default function TailorDashboard() {
   const { user, logout } = useAuth()
   const [orders, setOrders] = useState([])
+  const [inventory, setInventory] = useState([])
   const [activeTab, setActiveTab] = useState('orders')
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState(null) // For invoices
+  const [newItem, setNewItem] = useState({ name: '', quantity: 0, unit: 'meters' })
   const [shopSettings, setShopSettings] = useState({
     name: '', bio: '', lat: '51.5113', lng: '-0.1402', address: ''
   })
@@ -30,12 +33,21 @@ export default function TailorDashboard() {
       })
     }
 
-    const { data: ordersData } = await supabase.from('orders').select('*').eq('tailor_id', user.id)
+    const { data: ordersData } = await supabase.from('orders').select('*').eq('tailor_id', user.id).order('created_at', { ascending: false })
     if (ordersData) {
-      const { data: usersData } = await supabase.from('users').select('id, username')
+      const { data: usersData } = await supabase.from('users').select('id, username, phone')
       const userMap = {}
-      if (usersData) usersData.forEach(u => { userMap[u.id] = u.username })
-      setOrders(ordersData.map(o => ({ ...o, customerName: userMap[o.customer_id] || 'Client' })))
+      if (usersData) usersData.forEach(u => { userMap[u.id] = { name: u.username, phone: u.phone } })
+      setOrders(ordersData.map(o => ({ 
+        ...o, 
+        customerName: userMap[o.customer_id]?.name || 'Client',
+        customerPhone: userMap[o.customer_id]?.phone || ''
+      })))
+    }
+
+    const { data: inventoryData } = await supabase.from('inventory').select('*').eq('tailor_id', user.id).order('updated_at', { ascending: false })
+    if (inventoryData) {
+      setInventory(inventoryData)
     }
   }
 
@@ -52,6 +64,24 @@ export default function TailorDashboard() {
     } catch (err) {
       showToast(err.message)
     }
+  }
+
+  const handlePaymentUpdate = async (orderId, amount) => {
+    try {
+      const { error } = await supabase.from('orders').update({ amount_paid: amount }).eq('id', orderId)
+      if (error) throw error
+      showToast('Payment updated')
+      fetchTailorData()
+    } catch (err) {
+      showToast(err.message)
+    }
+  }
+
+  const generateWhatsAppLink = (phone, order) => {
+    if (!phone) return '#';
+    const num = phone.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Hello ${order.customerName},\nThis is an update regarding your order for ${order.garment_type}. Current status: ${order.status}. Expected delivery: ${order.expected_delivery || 'TBD'}.`);
+    return `https://wa.me/${num}?text=${msg}`;
   }
 
   const handleSettingsSubmit = async (e) => {
@@ -74,12 +104,43 @@ export default function TailorDashboard() {
     }
   }
 
+  const handleAddInventory = async (e) => {
+    e.preventDefault()
+    try {
+      const { error } = await supabase.from('inventory').insert([{ 
+        tailor_id: user.id, 
+        item_name: newItem.name, 
+        quantity: parseFloat(newItem.quantity), 
+        unit: newItem.unit 
+      }])
+      if (error) throw error
+      showToast('Item added to inventory')
+      fetchTailorData()
+      setNewItem({ name: '', quantity: 0, unit: 'meters' })
+    } catch (err) {
+      showToast(err.message)
+    }
+  }
+
+  const handleDeleteInventory = async (id) => {
+    try {
+      const { error } = await supabase.from('inventory').delete().eq('id', id)
+      if (error) throw error
+      showToast('Item deleted')
+      fetchTailorData()
+    } catch (err) {
+      showToast(err.message)
+    }
+  }
+
   const pendingOrders = orders.filter(o => o.status !== 'Ready')
   const completedOrders = orders.filter(o => o.status === 'Ready')
-  const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price || 0), 0)
+  const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.amount_paid || 0), 0) // changed to amount_paid
 
   const sidebarItems = [
     { id: 'orders', icon: '📋', label: 'Orders' },
+    { id: 'stocks', icon: '🧵', label: 'Stocks (Inventory)' },
+    { id: 'history', icon: '📜', label: 'History' },
     { id: 'settings', icon: '⚙️', label: 'Shop Settings' },
   ]
 
@@ -157,6 +218,23 @@ export default function TailorDashboard() {
             <p className="text-zinc-500 text-sm mt-1">Manage orders, update shop settings, and track your business.</p>
           </div>
 
+          {/* Deadline Notifications */}
+          {pendingOrders.filter(o => o.expected_delivery && new Date(o.expected_delivery) < new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)).length > 0 && (
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-5 backdrop-blur-sm animate-fade-in">
+              <h3 className="text-sm font-semibold text-rose-400 mb-3 flex items-center gap-2">
+                <span>⚠️</span> Upcoming Deadlines (Next 5 Days)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {pendingOrders.filter(o => o.expected_delivery && new Date(o.expected_delivery) < new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)).map(o => (
+                  <div key={o.id} className="bg-zinc-950/50 rounded-xl p-3 border border-rose-500/10">
+                    <p className="text-xs text-white font-medium">{o.customerName} - {o.garment_type}</p>
+                    <p className="text-[10px] text-rose-400/80 mt-1">Due: {new Date(o.expected_delivery).toLocaleDateString()}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Stats cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-5 backdrop-blur-sm hover:border-zinc-700/50 transition-colors">
@@ -206,6 +284,160 @@ export default function TailorDashboard() {
                   <p className="text-[10px] text-zinc-500 mt-0.5">{orders.length} total commissions</p>
                 </div>
               </div>
+              <div className="p-6 space-y-4">
+                {pendingOrders.map(order => {
+                  const total = parseFloat(order.total_price || 0)
+                  const paid = parseFloat(order.amount_paid || 0)
+                  const balance = total - paid
+                  
+                  return (
+                    <div key={order.id} className="bg-zinc-950/50 border border-zinc-800/50 rounded-xl p-5 hover:border-zinc-700/50 transition-colors flex flex-col gap-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 flex items-center justify-center text-violet-300 text-sm font-bold border border-violet-500/20">
+                            {order.customerName?.charAt(0)?.toUpperCase() || 'C'}
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-semibold text-white">{order.customerName}</h4>
+                            <p className="text-xs text-zinc-400">{order.garment_type} • Due: {order.expected_delivery || 'TBD'}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a 
+                            href={generateWhatsAppLink(order.customerPhone, order)}
+                            target="_blank" rel="noopener noreferrer"
+                            className="bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+                          >
+                            💬 WhatsApp
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+                        {/* Timeline */}
+                        <div className="flex items-center gap-2">
+                          {['pending_measurements', 'Fabric Cut', 'Stitching', 'Ready'].map((step, idx, arr) => {
+                            const isCurrent = order.status === step;
+                            const isPast = arr.indexOf(order.status) > idx;
+                            const stepLabels = {
+                              'pending_measurements': 'Pending',
+                              'Fabric Cut': 'Fabric Cut',
+                              'Stitching': 'Stitching',
+                              'Ready': 'Ready'
+                            }
+                            return (
+                              <div key={step} className="flex items-center">
+                                <button 
+                                  onClick={() => handleStatusChange(order.id, step)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                                    isCurrent ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 
+                                    isPast ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600' : 
+                                    'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'
+                                  }`}
+                                >
+                                  {stepLabels[step]}
+                                </button>
+                                {idx < arr.length - 1 && (
+                                  <div className={`h-[2px] w-4 mx-1 rounded-full ${isPast ? 'bg-zinc-700' : 'bg-zinc-800'}`}></div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {/* Payments */}
+                        <div className="flex items-center justify-end gap-6 bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-zinc-500">Total</p>
+                            <p className="text-sm font-mono text-white">₹{total.toFixed(0)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Paid</p>
+                            <input 
+                              type="number" 
+                              defaultValue={paid}
+                              onBlur={(e) => {
+                                if (e.target.value !== String(paid)) {
+                                  handlePaymentUpdate(order.id, parseFloat(e.target.value || 0))
+                                }
+                              }}
+                              className="w-20 bg-zinc-950 border border-zinc-700 rounded-md px-2 py-1 text-xs text-emerald-400 font-mono focus:outline-none focus:border-emerald-500/50"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-zinc-500">Balance</p>
+                            <p className={`text-sm font-mono ${balance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>₹{balance.toFixed(0)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {pendingOrders.length === 0 && (
+                  <div className="py-14 text-center">
+                    <span className="text-3xl block mb-3">📋</span>
+                    <p className="text-zinc-500 text-sm">No active orders. Customer orders will appear here.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Stocks Tab */}
+          {activeTab === 'stocks' && (
+            <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-2xl backdrop-blur-sm overflow-hidden animate-fade-in">
+              <div className="px-6 py-5 border-b border-zinc-800/50 flex justify-between items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Inventory Management</h3>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">Track your fabrics and raw materials.</p>
+                </div>
+              </div>
+              <div className="p-6">
+                <form onSubmit={handleAddInventory} className="flex flex-col sm:flex-row gap-4 mb-6 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50">
+                  <input type="text" placeholder="Item Name (e.g. Cotton Fabric)" required value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500/50" />
+                  <div className="flex gap-4">
+                    <input type="number" placeholder="Qty" required step="0.1" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: e.target.value})} className="w-24 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500/50" />
+                    <select value={newItem.unit} onChange={e => setNewItem({...newItem, unit: e.target.value})} className="w-32 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500/50">
+                      <option value="meters">Meters</option>
+                      <option value="yards">Yards</option>
+                      <option value="pieces">Pieces</option>
+                      <option value="spools">Spools</option>
+                    </select>
+                    <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors">Add</button>
+                  </div>
+                </form>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {inventory.map(item => (
+                    <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex justify-between items-center group hover:border-zinc-700 transition-colors">
+                      <div>
+                        <h4 className="text-sm font-medium text-white">{item.item_name}</h4>
+                        <p className="text-xs text-emerald-400 font-mono mt-1">{item.quantity} {item.unit}</p>
+                      </div>
+                      <button onClick={() => handleDeleteInventory(item.id)} className="text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all">
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                  {inventory.length === 0 && (
+                    <div className="col-span-full py-10 text-center text-zinc-500 text-xs">
+                      No inventory items found. Add some above.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* History Tab */}
+          {activeTab === 'history' && (
+            <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-2xl backdrop-blur-sm overflow-hidden animate-fade-in">
+              <div className="px-6 py-5 border-b border-zinc-800/50 flex justify-between items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Order History</h3>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">Completed and delivered orders.</p>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
@@ -213,63 +445,35 @@ export default function TailorDashboard() {
                       <th className="px-6 py-4">Customer</th>
                       <th className="px-6 py-4">Garment</th>
                       <th className="px-6 py-4">Price</th>
-                      <th className="px-6 py-4">Delivery</th>
                       <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Update</th>
+                      <th className="px-6 py-4 text-right">Invoice</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/30">
-                    {orders.map(order => (
+                    {completedOrders.map(order => (
                       <tr key={order.id} className="hover:bg-zinc-800/20 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 flex items-center justify-center text-violet-300 text-[10px] font-bold border border-violet-500/20">
-                              {order.customerName?.charAt(0)?.toUpperCase() || 'C'}
-                            </div>
-                            <span className="text-xs font-medium text-white">{order.customerName}</span>
-                          </div>
-                        </td>
+                        <td className="px-6 py-4 text-xs font-medium text-white">{order.customerName}</td>
                         <td className="px-6 py-4 text-xs text-zinc-400">{order.garment_type}</td>
                         <td className="px-6 py-4 text-xs font-mono text-emerald-400">₹{parseFloat(order.total_price).toFixed(0)}</td>
-                        <td className="px-6 py-4 text-xs text-zinc-500">{order.expected_delivery || '—'}</td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
-                            order.status === 'Ready'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : order.status === 'Stitching'
-                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                              : order.status === 'Fabric Cut'
-                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              order.status === 'Ready' ? 'bg-emerald-400' :
-                              order.status === 'Stitching' ? 'bg-amber-400' :
-                              order.status === 'Fabric Cut' ? 'bg-blue-400' :
-                              'bg-zinc-500'
-                            }`}></span>
-                            {order.status === 'pending_measurements' ? 'Pending' : order.status}
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            Completed
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <select
-                            value={order.status}
-                            onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                            className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500/50 cursor-pointer hover:border-zinc-600 transition-colors"
+                          <button 
+                            onClick={() => setSelectedOrder(order)}
+                            className="text-xs text-teal-400 hover:text-teal-300 underline underline-offset-2"
                           >
-                            <option value="pending_measurements">Pending</option>
-                            <option value="Fabric Cut">Fabric Cut</option>
-                            <option value="Stitching">Stitching</option>
-                            <option value="Ready">Ready</option>
-                          </select>
+                            View Invoice
+                          </button>
                         </td>
                       </tr>
                     ))}
-                    {orders.length === 0 && (
+                    {completedOrders.length === 0 && (
                       <tr>
-                        <td colSpan="6" className="px-6 py-14 text-center">
-                          <span className="text-3xl block mb-3">📋</span>
-                          <p className="text-zinc-500 text-xs">No orders yet. Customer orders will appear here.</p>
+                        <td colSpan="5" className="px-6 py-14 text-center text-zinc-500 text-xs">
+                          No completed orders yet.
                         </td>
                       </tr>
                     )}
@@ -358,6 +562,66 @@ export default function TailorDashboard() {
           )}
         </div>
       </main>
+
+      {/* Invoice Modal */}
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center shrink-0">
+              <h3 className="text-white font-semibold flex items-center gap-2"><span>🧾</span> Invoice</h3>
+              <button onClick={() => setSelectedOrder(null)} className="text-zinc-500 hover:text-white">✕</button>
+            </div>
+            <div id="invoice-content" className="p-8 space-y-6 bg-white text-black overflow-y-auto">
+              <div className="flex justify-between border-b pb-6">
+                <div>
+                  <h1 className="text-2xl font-bold text-zinc-900">{shopSettings.name || 'Tailor Shop'}</h1>
+                  <p className="text-xs text-zinc-500 mt-1">{shopSettings.address}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-lg tracking-widest text-zinc-300 uppercase">Invoice</p>
+                  <p className="text-xs text-zinc-500 mt-1">Date: {new Date().toLocaleDateString()}</p>
+                </div>
+              </div>
+              <div className="border-b pb-6">
+                <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-widest mb-2">Bill To:</p>
+                <p className="text-base font-semibold text-zinc-800">{selectedOrder.customerName}</p>
+                <p className="text-xs text-zinc-500 mt-1">{selectedOrder.customerPhone || 'N/A'}</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-[10px] uppercase tracking-widest text-zinc-400">
+                    <th className="py-3 font-semibold">Description</th>
+                    <th className="py-3 font-semibold text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  <tr>
+                    <td className="py-4 text-zinc-700">{selectedOrder.garment_type} <span className="text-zinc-400 text-xs">(Custom Tailoring)</span></td>
+                    <td className="py-4 text-right font-mono text-zinc-800">₹{parseFloat(selectedOrder.total_price || 0).toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="space-y-2 text-right text-sm pt-4">
+                <p className="text-zinc-600">Total: <span className="font-mono text-zinc-800 ml-4">₹{parseFloat(selectedOrder.total_price || 0).toFixed(2)}</span></p>
+                <p className="text-zinc-600">Amount Paid: <span className="font-mono text-emerald-600 ml-4">₹{parseFloat(selectedOrder.amount_paid || 0).toFixed(2)}</span></p>
+                <p className="font-bold pt-4 border-t text-zinc-800">Balance Due: <span className="font-mono text-rose-600 ml-4">₹{(parseFloat(selectedOrder.total_price || 0) - parseFloat(selectedOrder.amount_paid || 0)).toFixed(2)}</span></p>
+              </div>
+            </div>
+            <div className="p-4 bg-zinc-950 flex justify-end gap-3 shrink-0 border-t border-zinc-800">
+              <button onClick={() => {
+                const printContents = document.getElementById('invoice-content').innerHTML;
+                const originalContents = document.body.innerHTML;
+                document.body.innerHTML = `<div style="max-width:600px;margin:0 auto;padding:40px;font-family:sans-serif;">${printContents}</div>`;
+                window.print();
+                document.body.innerHTML = originalContents;
+                window.location.reload(); // Quick hack to restore react state after replacing DOM
+              }} className="bg-teal-600 hover:bg-teal-500 text-white px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-teal-500/20">
+                🖨️ Print Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

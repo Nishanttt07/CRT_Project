@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
     garment_type TEXT NOT NULL,
     status TEXT DEFAULT 'pending_measurements',
     total_price DECIMAL(10, 2),
+    amount_paid DECIMAL(10, 2) DEFAULT 0,
     expected_delivery DATE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -139,3 +140,19 @@ CREATE POLICY "Allow customers to view their orders"
 DROP POLICY IF EXISTS "Allow tailors to manage orders" ON public.orders;
 CREATE POLICY "Allow tailors to manage orders" 
   ON public.orders FOR ALL USING (auth.uid() = tailor_id);
+
+-- 7. Inventory Table
+CREATE TABLE IF NOT EXISTS public.inventory (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    tailor_id UUID REFERENCES public.shops(id) ON DELETE CASCADE,
+    item_name TEXT NOT NULL,
+    quantity FLOAT NOT NULL DEFAULT 0,
+    unit TEXT DEFAULT 'units',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow tailors to manage their inventory" ON public.inventory;
+CREATE POLICY "Allow tailors to manage their inventory" 
+  ON public.inventory FOR ALL USING (auth.uid() = tailor_id);
