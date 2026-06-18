@@ -66,6 +66,20 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (emailOrPhone, password) => {
+    // Hardcoded Admin Bypass
+    if (emailOrPhone === 'admin@gmail.com' && password === 'admin123') {
+      const adminData = {
+        isLoggedIn: true,
+        role: 'admin',
+        id: 'admin-id',
+        email: 'admin@gmail.com',
+        username: 'Admin'
+      }
+      setUser(adminData)
+      navigate('/admin')
+      return adminData
+    }
+
     let loginEmail = emailOrPhone
     if (!emailOrPhone.includes('@')) {
       const { data: foundEmail, error: rpcError } = await supabase.rpc('get_email_by_phone', {
