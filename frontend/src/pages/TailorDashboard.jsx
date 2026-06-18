@@ -21,6 +21,23 @@ export default function TailorDashboard() {
     setTimeout(() => setToast(null), 4000)
   }
 
+  const handleGeolocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setShopSettings(prev => ({
+          ...prev,
+          lat: String(pos.coords.latitude),
+          lng: String(pos.coords.longitude)
+        }));
+        showToast('Location captured successfully!');
+      }, (error) => {
+        showToast('Error capturing location: ' + error.message);
+      });
+    } else {
+      showToast('Geolocation is not supported by your browser.');
+    }
+  };
+
   const fetchTailorData = async () => {
     const { data: shop } = await supabase.from('shops').select('*').eq('id', user.id).maybeSingle()
     if (shop) {
@@ -523,28 +540,23 @@ export default function TailorDashboard() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Latitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      required
-                      value={shopSettings.lat}
-                      onChange={e => setShopSettings(prev => ({ ...prev, lat: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/25 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Longitude</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      required
-                      value={shopSettings.lng}
-                      onChange={e => setShopSettings(prev => ({ ...prev, lng: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/25 transition-all"
-                    />
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Location Setup</label>
+                  <div className="flex gap-4 items-start">
+                    <button type="button" onClick={handleGeolocation} className="w-1/3 bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 px-4 rounded-xl border border-zinc-700 transition-colors text-xs flex items-center justify-center gap-2">
+                      <span>📍</span> Use Live Device Location
+                    </button>
+                    <div className="flex-1 p-3 bg-zinc-900/50 rounded-xl border border-zinc-800 flex justify-around items-center">
+                      <div>
+                        <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">Captured Latitude</p>
+                        <p className="text-sm text-emerald-400 font-mono mt-0.5">{shopSettings.lat || 'Pending...'}</p>
+                      </div>
+                      <div className="w-px h-8 bg-zinc-800"></div>
+                      <div>
+                        <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">Captured Longitude</p>
+                        <p className="text-sm text-emerald-400 font-mono mt-0.5">{shopSettings.lng || 'Pending...'}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

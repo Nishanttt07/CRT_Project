@@ -8,11 +8,15 @@ export default function CustomerDashboard() {
   const [orders, setOrders] = useState([])
   const [measurements, setMeasurements] = useState([])
   const [shops, setShops] = useState([])
+  const [shopRatings, setShopRatings] = useState({})
   const [activeTab, setActiveTab] = useState('orders')
   const [selectedShop, setSelectedShop] = useState(null)
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(false)
+
+  // Rating state
+  const [reviewData, setReviewData] = useState({ rating: 0, text: '' })
 
   // Booking form
   const [bookingGarment, setBookingGarment] = useState('Suit')
@@ -30,6 +34,13 @@ export default function CustomerDashboard() {
   const fetchShops = async () => {
     const { data } = await supabase.from('shops').select('*')
     if (data) setShops(data)
+    
+    const { data: ratingsData } = await supabase.from('shop_ratings').select('*')
+    if (ratingsData) {
+      const ratingsMap = {}
+      ratingsData.forEach(r => { ratingsMap[r.shop_id] = r })
+      setShopRatings(ratingsMap)
+    }
   }
 
   const fetchCustomerData = async () => {
@@ -43,6 +54,26 @@ export default function CustomerDashboard() {
     fetchShops()
     if (user.id) fetchCustomerData()
   }, [user.id])
+
+  const handleSubmitRating = async (orderId) => {
+    if (reviewData.rating === 0) return showToast('Please select a rating star')
+    setLoading(true)
+    try {
+      const { error } = await supabase.from('orders').update({
+        customer_rating: reviewData.rating,
+        customer_review: reviewData.text
+      }).eq('id', orderId)
+      if (error) throw error
+      showToast('Thank you for your feedback!')
+      setReviewData({ rating: 0, text: '' })
+      fetchCustomerData()
+      fetchShops()
+    } catch (err) {
+      showToast(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleBookOrder = async (e) => {
     e.preventDefault()
@@ -256,6 +287,46 @@ export default function CustomerDashboard() {
                           ))}
                         </div>
                       </div>
+
+                      {/* Rating Component */}
+                      {(order.status === 'Ready' || order.status === 'Delivered') && !order.customer_rating && (
+                        <div className="mt-6 p-4 bg-zinc-50 border border-zinc-200/60 rounded-xl animate-fade-in">
+                          <p className="text-xs font-semibold text-zinc-900 mb-2">Rate Your Master Tailor</p>
+                          <div className="flex gap-1 mb-3">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <button 
+                                key={star} 
+                                onClick={() => setReviewData({ ...reviewData, rating: star })}
+                                className={`text-xl transition-colors ${reviewData.rating >= star ? 'text-amber-400' : 'text-zinc-300 hover:text-amber-200'}`}
+                              >
+                                ★
+                              </button>
+                            ))}
+                          </div>
+                          <textarea 
+                            placeholder="Submit your review..." 
+                            value={reviewData.text}
+                            onChange={e => setReviewData({ ...reviewData, text: e.target.value })}
+                            className="w-full p-2.5 bg-white border border-zinc-200 rounded-lg text-xs focus:outline-none focus:border-violet-500 mb-3 resize-none h-16" 
+                          />
+                          <button 
+                            onClick={() => handleSubmitRating(order.id)}
+                            disabled={loading}
+                            className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-1.5 px-4 rounded-lg transition-colors text-xs disabled:opacity-50"
+                          >
+                            Submit Feedback
+                          </button>
+                        </div>
+                      )}
+                      {order.customer_rating && (
+                        <div className="mt-6 p-4 bg-violet-50 border border-violet-100 rounded-xl flex items-start gap-3">
+                          <div className="text-amber-500 text-lg">★</div>
+                          <div>
+                            <p className="text-xs font-semibold text-violet-900 mb-0.5">You rated this {order.customer_rating} out of 5</p>
+                            {order.customer_review && <p className="text-[11px] text-violet-700 italic">"{order.customer_review}"</p>}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -288,9 +359,12 @@ export default function CustomerDashboard() {
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 border-2 border-white shadow-lg flex items-center justify-center text-white text-xs group-hover:shadow-xl transition-all">
                           📍
                         </div>
-                        <span className="mt-1.5 bg-white px-2.5 py-1 rounded-lg text-[10px] font-medium border border-zinc-200/80 shadow-sm text-zinc-800 max-w-[130px] truncate">
-                          {shop.shop_name}
-                        </span>
+                        <div className="mt-1.5 bg-white px-2.5 py-1 rounded-lg text-[10px] font-medium border border-zinc-200/80 shadow-sm text-zinc-800 max-w-[130px] flex flex-col items-center">
+                          <span className="truncate w-full text-center">{shop.shop_name}</span>
+                          {shopRatings[shop.id] && (
+                            <span className="text-amber-500 font-bold text-[9px]">{shopRatings[shop.id].average_rating}★</span>
+                          )}
+                        </div>
                       </div>
                     </button>
                   )
@@ -306,7 +380,15 @@ export default function CustomerDashboard() {
                 {selectedShop && !showBookingModal && (
                   <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-sm p-5 border border-zinc-200 rounded-xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 max-w-lg mx-auto animate-slide-up">
                     <div>
-                      <h4 className="text-sm font-semibold text-zinc-900">{selectedShop.shop_name}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-semibold text-zinc-900">{selectedShop.shop_name}</h4>
+                        {shopRatings[selectedShop.id] && (
+                          <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                            {shopRatings[selectedShop.id].average_rating}★
+                            <span className="font-normal opacity-70">({shopRatings[selectedShop.id].total_reviews})</span>
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{selectedShop.bio}</p>
                       <p className="text-[10px] text-zinc-400 mt-1">📍 {selectedShop.address}</p>
                     </div>
@@ -394,7 +476,14 @@ export default function CustomerDashboard() {
                       }`}
                     >
                       <div className="flex justify-between items-start">
-                        <h4 className="text-xs font-semibold text-zinc-900">{shop.shop_name}</h4>
+                        <div>
+                          <h4 className="text-xs font-semibold text-zinc-900 flex items-center gap-1.5">
+                            {shop.shop_name}
+                            {shopRatings[shop.id] && (
+                              <span className="text-amber-500 text-[10px]">{shopRatings[shop.id].average_rating}★</span>
+                            )}
+                          </h4>
+                        </div>
                         <span className="text-[9px] text-zinc-400 font-mono">{shop.latitude?.toFixed(3)}, {shop.longitude?.toFixed(3)}</span>
                       </div>
                       <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2 leading-relaxed">{shop.bio}</p>
@@ -413,6 +502,13 @@ export default function CustomerDashboard() {
         {/* Measurements Tab */}
         {activeTab === 'measurements' && (
           <div className="space-y-5 animate-fade-in">
+            <div className="bg-violet-50 border-l-4 border-violet-600 p-4 rounded-r-lg mb-6">
+              <p className="text-sm text-violet-900 font-medium flex items-start gap-2">
+                <span className="text-violet-600 text-lg leading-none mt-0.5">🔒</span>
+                Your measurement profile is locked and verified in real-time by your master tailor. Updates can only be committed by the shop during a physical or virtual fitting.
+              </p>
+            </div>
+            
             <h2 className="text-lg font-semibold text-zinc-900 tracking-tight">Measurement Vault</h2>
             {measurements.length === 0 ? (
               <div className="bg-white border border-zinc-200/60 rounded-2xl p-12 text-center">
